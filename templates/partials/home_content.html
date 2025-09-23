@@ -1,0 +1,174 @@
+<style>
+.main-content {
+  flex: 1;
+  margin-top:10px; 
+  overflow-y: auto;
+  margin-bottom: 70px;
+  margin-left: 50px; 
+ 
+}
+ /* Sidebar (mobile overlay) */
+@media (max-width: 1000px) {
+  .sidebar {
+    transform: translateX(-100%);
+    z-index: 701; /* above the backdrop */
+    background-color: #000;
+  }
+
+  body.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  /* Backdrop */
+  body.sidebar-open::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 700; /* below sidebar but above main content */
+  }
+
+  /* Ensure main content stays full width */
+  .main-content {
+    margin-left: 0;
+    z-index: 0;
+  }
+
+  /* Topbar stays above everything */
+  .topbar {
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1002; /* higher than sidebar and backdrop */
+  }
+
+
+ 
+}
+
+
+  .song-list {
+      flex: 1;
+      overflow-y: auto;
+      color: #f5e4e4ff;
+      
+    }
+
+    th, td { 
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid #2a2a2a;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-list table {
+  width: 100%;
+  table-layout: fixed;
+ 
+}
+
+.song-list table tr:hover {
+  background-color: rgba(29, 185, 84, 0.1);
+}
+
+/*overflow-y: auto;*/
+
+
+
+
+
+.mood-btn {
+  display: inline-block;            /* Make buttons inline-block */
+  background-color: #000000ff;
+  border: 1px solid #2a2a2a;
+  padding: 0.5rem 0.8rem;
+  color:  #ffffffff;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.3s, color 0.3s;
+  white-space: nowrap;
+  margin: 0.25rem;                 
+}
+
+.mood-btn:hover,
+.mood-btn:focus {
+  background-color: rgba(29,185,84,.15);
+  outline: none;
+}
+    
+.mood-btn.active {
+  background: rgba(29,185,84,.15);
+  font-weight: bold;
+}
+
+@media (min-width: 769px) {
+  .mood-filter-wrapper {
+    margin-top: 6rem; /* Adjust as needed */
+  }
+}
+
+@media (max-width: 1200px) {
+  #moodFilterBar {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0.5rem;
+  }
+  .mood-filter-wrapper {
+    margin-top: 7rem; /* Slightly push down on small screens */
+  }
+
+  .mood-btn {
+    display: inline-block;
+  }
+}
+
+
+
+</style>
+
+<main class="main-content">
+
+  <div class="mood-filter-wrapper">
+  <div id="moodFilterBar">
+    <button class="mood-btn" data-mood="energetic">⚡ Energetic</button>
+    <button class="mood-btn" data-mood="feel_good">😊 Feel Good</button>
+    <button class="mood-btn" data-mood="party">🎉 Party</button>
+    <button class="mood-btn" data-mood="relax">🎧 Relax</button>
+    <button class="mood-btn" data-mood="romance">❤️ Romance</button>
+    <button class="mood-btn" data-mood="sad">😢 Sad</button>
+  </div>
+</div>
+
+<!-- Home View Content -->
+<div id="homeContent">
+
+  <h3 style="color:white;font-size: 1.8rem">🎥 Recently Watched</h3>
+  <div class="video-container" id="recentlyWatchedContainer" style="white-space: nowrap; overflow-x: auto;"></div>
+
+  
+  <h3 style="color:white; font-size: 1.8rem;">🔁 Frequently Watched</h3>
+  <div class="video-container" id="frequentlyWatchedContainer" style="white-space: nowrap; overflow-x: auto;"></div>
+
+</div>
+
+<!-- Mood Song List -->
+<div id="mood-song-list" style="display: none;">
+
+  <div class="song-list">
+    <table id="songTable">
+      <tbody id="song-list-body">
+        <!-- Filled by JS -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</main>

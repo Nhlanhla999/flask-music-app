@@ -1,0 +1,257 @@
+<style>
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 70px;
+  margin-left: 60px; 
+  margin-top: 60px;
+}
+
+ /* Sidebar (mobile overlay) */
+@media (max-width: 1000px) {
+  .sidebar {
+    transform: translateX(-100%);
+    z-index: 701; /* above the backdrop */
+    background-color: #000;
+  }
+
+  body.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  /* Backdrop */
+  body.sidebar-open::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 700; /* below sidebar but above main content */
+  }
+
+  /* Ensure main content stays full width */
+  .main-content {
+    margin-left: 0;
+    z-index: 0;
+  }
+
+  /* Topbar stays above everything */
+  .topbar {
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1002; /* higher than sidebar and backdrop */
+  }
+}
+
+table {
+  background-color: #000000; 
+}
+.playlistbtn { 
+  display: inline-block;       
+  background-color: #000000ff;
+  border: 1px solid #2a2a2a;
+  color: #ffffffff;
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.3s, color 0.3s;
+  white-space: nowrap;
+  margin: 0.25rem;       /* spacing between buttons */
+    
+}
+
+.playlistbtn:hover,
+.playlistbtn:focus {
+  background-color: rgba(29,185,84,.15);
+  outline: none;
+}
+
+.shuffle-btn {
+  margin-top: 2rem;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #1db954;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.shuffle-btn:hover {
+  background-color: rgba(29,185,84,.15);
+  transform: scale(1.05);
+}
+
+/* Playlist wrapper */
+.playlist-section {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Preview container */
+.preview-box {
+  flex: 0 0 400px;
+  text-align: center;
+  top:600px;
+  justify-content: center;
+}
+
+/* Preview content */
+.preview-content {
+  background-color: #0f0f0f;
+  color: white;
+  padding: 6rem 3rem;
+  font-size: 2rem;
+  width: 65%;
+  height:200px;
+  border-radius: 12px;
+  display: none; /* toggled by JS */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+/* Preview styling */
+.preview-icon {
+  font-size: 4rem;
+}
+
+.preview-count {
+  margin-top: 1rem;
+  font-size: 1.5rem;
+}
+
+.song-list {
+  flex: 1;
+  overflow-y: auto;
+  border-left: 1px solid #1db954;
+  color: #f5e4e4ff;
+  display: none; /* toggled by JS */
+}
+
+.song-list table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+
+
+.song-list table tr:hover {
+  background-color: rgba(29, 185, 84, 0.1);
+}
+    th, td { 
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid #2a2a2a;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Responsive - mobile stack */
+@media (max-width: 768px) {
+  .playlist-section {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .preview-box {
+    width: 100%;
+  }
+
+  .preview-content {
+    width: 90%;
+    font-size: 1.5rem;
+  }
+
+  .song-list {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid #1db954;
+
+  }
+
+  .song-list table {
+   width: 100%;
+}
+  
+}
+
+</style>
+
+<main class="main-content">
+
+<div>
+  <button class="playlistbtn" onclick="showPlaylist('mp3')">🎵 MP3 Playlist</button>
+  <button class="playlistbtn" onclick="showPlaylist('mp4')">🎬 MP4 Playlist</button>
+  <button class="playlistbtn" onclick="showPlaylist('liked')">❤️ Liked Songs</button>
+</div>
+
+<!-- MP3 Playlist -->
+<div class="playlist-section">
+  <div id="mp3Container" class="preview-box">
+    <div id="showMP3Container" class="preview-content">
+      <span class="preview-icon">🎵</span>
+     <span class="preview-count">({{ mp3_songs|length }} songs)</span>
+      <button class="shuffle-btn" data-playlist="#mp3Playlist tbody tr">Shuffle and Play</button>
+    </div>
+  </div>
+  <div id="mp3Playlist" class="song-list">
+    <table>
+      <tbody>
+        {% for song in songs if song.title.lower().endswith('.mp3') %}
+        <tr data-file="{{ song.title }}"><td>{{ song.title }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MP4 Playlist -->
+<div class="playlist-section">
+  <div id="mainVideoContainer" class="preview-box">
+    <div id="showMP4Container" class="preview-content">
+      <span class="preview-icon">🎬</span>
+      <span class="preview-count">({{ mp4_songs|length }} songs)</span>
+      <button class="shuffle-btn" data-playlist="#mp4Playlist tbody tr">Shuffle and Play</button>
+    </div>
+  </div>
+  <div id="mp4Playlist" class="song-list">
+    <table>
+      <tbody>
+        {% for song in songs if song.title.lower().endswith('.mp4') %}
+        <tr data-file="{{ song.title }}"><td>{{ song.title }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Liked Playlist -->
+<div class="playlist-section">
+  <div id="likedVideoContainer" class="preview-box">
+    <div id="showLikedContainer" class="preview-content">
+      <span class="preview-icon">❤️</span>
+      <span class="preview-count">({{ liked_songs|length }} songs)</span>
+      <button class="shuffle-btn" data-playlist="#likedPlaylist tbody tr">Shuffle and Play</button>
+    </div>
+  </div>
+  <div id="likedPlaylist" class="song-list">
+    <table>
+      <tbody>
+        {% for song in liked_songs %}
+        <tr data-file="{{ song }}"><td>{{ song }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</main>
