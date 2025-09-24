@@ -20,39 +20,85 @@ playlist_queue = {}
 
 MOODS = ['feel_good', 'sad', 'energetic', 'relax','party', 'romance']
 
-def extract_zip_with_7zip(zip_path, extract_to):
-    # Path to 7z.exe (update if yours is different)
-    seven_zip = r"C:\Program Files\7-Zip\7z.exe"
-    
-    if not os.path.exists(seven_zip):
-        raise RuntimeError("7-Zip not found at expected path.")
-
-    command = [seven_zip, 'x', zip_path, f'-o{extract_to}', '-y']
-
-    try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        print("✅ Extraction complete:\n", result.stdout)
-    except subprocess.CalledProcessError as e:
-        print("❌ 7-Zip extraction failed:\n", e.stderr)
-        raise RuntimeError("7-Zip extraction failed.") from e
-    
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
     if request.method == 'POST':
-        return index()  # reuse your existing upload handling
+        files = request.files.getlist('music_files')
+        if not files:
+            return "No files uploaded", 400
+
+        # Create a unique folder to store this upload
+        folder_id = str(uuid.uuid4())
+        folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
+        os.makedirs(folder_path, exist_ok=True)
+
+        # Save each file directly in the folder (flatten structure)
+        for file in files:
+            filename_only = os.path.basename(file.filename)  # remove any subfolder path
+            save_path = os.path.join(folder_path, filename_only)
+            file.save(save_path)
+
+        # Initialize playlist
+        playlist = {mood: [] for mood in MOODS}
+        playlist["mp4"] = {}
+
+        # Process MP3 and MP4 files
+        for file in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file)
+
+            if file.endswith('.mp3'):
+                mood = classify_song(file_path)
+                if mood in playlist:
+                    playlist[mood].append(file)  # just filename
+            elif file.endswith('.mp4'):
+                features = get_audio_features(file_path, mode="similarity")
+                if features.size > 0:
+                    audio_features_cache[file_path] = features
+
+        save_features_to_disk()
+        precompute_folder_features(folder_path)
+
+        # Compute top similar MP4s
+        mp4_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp4")]
+        for file in mp4_files:
+            file_path = os.path.join(folder_path, file)
+            target_feats = audio_features_cache.get(file_path)
+            if target_feats is None:
+                continue
+            sims = [
+                (os.path.basename(other_file), cosine_similarity(target_feats, feats))
+                for other_file, feats in audio_features_cache.items()
+                if other_file != file_path
+            ]
+            sims.sort(key=lambda x: x[1], reverse=True)
+            playlist["mp4"][file] = [f for f, _ in sims[:10]]
+
+        # Save playlist JSON
+        with open(os.path.join(folder_path, 'playlist.json'), 'w') as f:
+            json.dump(playlist, f, indent=2)
+
+        # Initialize liked/disliked JSON
+        liked_path = os.path.join(folder_path, 'liked.json')
+        disliked_path = os.path.join(folder_path, 'disliked.json')
+        if not os.path.exists(liked_path):
+            save_json(liked_path, {"liked": []})
+        if not os.path.exists(disliked_path):
+            save_json(disliked_path, {"disliked": []})
+
+        return redirect(url_for('player', folder_id=folder_id))
+
     return render_template("upload.html")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    load_features_cache()  # Load cached similarity features at startup
-
+    load_features_cache()
     uploads = os.listdir(app.config['UPLOAD_FOLDER'])
     folder_id = None
     playlist = {}
     liked_songs = []
     disliked_songs = []
 
-    # Look for the most recent playlist first
+    # Look for the most recent folder with playlist.json
     for folder in sorted(uploads, reverse=True):
         folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder)
         playlist_path = os.path.join(folder_path, 'playlist.json')
@@ -72,77 +118,10 @@ def index():
             disliked_songs = load_json(disliked_path, {"disliked": []})["disliked"]
             break
 
-    # Handle new ZIP upload
-    if request.method == 'POST':
-        zip_file = request.files.get('music_zip')
-        if zip_file and zip_file.filename.endswith('.zip'):
-            folder_id = str(uuid.uuid4())
-            folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
-            os.makedirs(folder_path, exist_ok=True)
-
-            zip_path = os.path.join(folder_path, 'songs.zip')
-            zip_file.save(zip_path)
-            extract_zip_with_7zip(zip_path, folder_path)
-            os.remove(zip_path)
-
-            # Initialize playlists
-            playlist = {mood: [] for mood in MOODS}
-            playlist["mp4"] = {}
-
-            # Process MP3 and MP4 files
-            for file in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, file)
-
-                if file.endswith('.mp3'):
-                    mood = classify_song(file_path)
-                    if mood in playlist:
-                        playlist[mood].append(file)
-
-                elif file.endswith('.mp4'):
-                    # Compute and cache similarity features
-                    features = get_audio_features(file_path, mode="similarity")
-                    if features.size > 0:
-                        audio_features_cache[file_path] = features
-
-            save_features_to_disk()  # Persist all MP4 features
-
-            # Precompute similarities for all MP4s in the folder (including cached ones)
-            precompute_folder_features(folder_path)
-            mp4_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp4")]
-
-            for file in mp4_files:
-                file_path = os.path.join(folder_path, file)
-                target_feats = audio_features_cache.get(file_path)
-                if target_feats is None:
-                    continue
-                sims = [
-                    (os.path.basename(other_file), cosine_similarity(target_feats, feats))
-                    for other_file, feats in audio_features_cache.items()
-                    if other_file != file_path
-                ]
-                sims.sort(key=lambda x: x[1], reverse=True)
-                playlist["mp4"][file] = [f for f, _ in sims[:10]]  # Top 5 similar
-
-            # Save playlist
-            with open(os.path.join(folder_path, 'playlist.json'), 'w') as f:
-                json.dump(playlist, f, indent=2)
-
-            # Initialize liked/disliked JSON
-            liked_path = os.path.join(folder_path, 'liked.json')
-            disliked_path = os.path.join(folder_path, 'disliked.json')
-            if not os.path.exists(liked_path):
-                save_json(liked_path, {"liked": []})
-            if not os.path.exists(disliked_path):
-                save_json(disliked_path, {"disliked": []})
-
-            liked_songs = []
-            disliked_songs = []
-
-    # Fallback if no folder found
     if not folder_id:
         return render_template(
             'home.html',
-            message="No playlist found. Please upload your music zip.",
+            message="No playlist found. Please upload a music folder.",
             playlist={},
             folder_id=None,
             liked=[],
@@ -156,66 +135,16 @@ def index():
         folder_id=folder_id,
         liked=liked_songs,
         disliked=disliked_songs
-      
     )
+
+
 @app.route('/player/<folder_id>', methods=['GET', 'POST'])
 def player(folder_id):
-    load_features_cache()  # Ensure similarity cache is loaded
-
+    load_features_cache()
     folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
 
-    # Handle new ZIP upload inside the existing folder
-    if request.method == 'POST':
-        zip_file = request.files.get('music_zip')
-        if zip_file and zip_file.filename.endswith('.zip'):
-            zip_path = os.path.join(folder_path, 'songs.zip')
-            zip_file.save(zip_path)
-            extract_zip_with_7zip(zip_path, folder_path)
-            os.remove(zip_path)
-
-            # Initialize playlists
-            playlist = {mood: [] for mood in MOODS}
-            playlist["mp4"] = {}
-
-            # Process MP3 and MP4 files
-            for file in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, file)
-
-                if file.endswith('.mp3'):
-                    mood = classify_song(file_path)
-                    if mood in playlist:
-                        playlist[mood].append(file)
-
-                elif file.endswith('.mp4'):
-                    features = get_audio_features(file_path, mode="similarity")
-                    if features.size > 0:
-                        audio_features_cache[file_path] = features
-
-            save_features_to_disk()  # Persist all MP4 features
-
-            # Precompute missing features
-            precompute_folder_features(folder_path)
-
-            # Compute similarities for all MP4s
-            mp4_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp4")]
-            for file in mp4_files:
-                file_path = os.path.join(folder_path, file)
-                target_feats = audio_features_cache.get(file_path)
-                if target_feats is None:
-                    continue
-                sims = [
-                    (os.path.basename(other_file), cosine_similarity(target_feats, feats))
-                    for other_file, feats in audio_features_cache.items()
-                    if other_file != file_path
-                ]
-                sims.sort(key=lambda x: x[1], reverse=True)
-                playlist["mp4"][file] = [f for f, _ in sims[:10]]  # Top 5 similar
-
-            # Save updated playlist
-            with open(os.path.join(folder_path, 'playlist.json'), 'w') as f:
-                json.dump(playlist, f, indent=2)
-
-            return redirect(url_for('player', folder_id=folder_id))
+    if not os.path.exists(folder_path):
+        return f"Folder {folder_id} not found.", 404
 
     # Load existing playlist
     playlist_path = os.path.join(folder_path, 'playlist.json')
