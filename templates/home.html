@@ -1461,29 +1461,6 @@ playPauseBtn.addEventListener('click', () => {
     }
   });
 
-  document.addEventListener("DOMContentLoaded", () => {
-    const messageEl = document.querySelector("#processingMessage");
-    if (!messageEl) return;
-
-    const folderId = document.body.dataset.folderId;
-    if (!folderId) return;
-
-    // Poll every 5 seconds
-    const interval = setInterval(() => {
-      fetch(`/api/playlist/${folderId}`)
-        .then(res => res.json())
-        .then(data => {
-          const hasSongs = Object.values(data).some(arr => arr.length > 0);
-          if (hasSongs) {
-            clearInterval(interval);
-            window.location.reload(); // reload page when songs appear
-          }
-        })
-        .catch(err => console.error("Error fetching playlist:", err));
-    }, 5000);
-  });
-
-
 const footerShuffle = document.getElementById('shuffleBtn');
 footerShuffle.addEventListener('click', () => {
     shuffleMode = !shuffleMode;
