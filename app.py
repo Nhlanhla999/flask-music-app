@@ -7,7 +7,6 @@ import time
 from glob import glob
 import numpy as np
 import difflib
-import threading
 
 
 app = Flask(__name__)
@@ -20,6 +19,7 @@ MAX_RESULTS = 10
 playlist_queue = {}
 
 MOODS = ['feel_good', 'sad', 'energetic', 'relax','party', 'romance']
+
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -39,12 +39,46 @@ def upload():
             save_path = os.path.join(folder_path, filename_only)
             file.save(save_path)
 
-        # Initialize empty playlist + liked/disliked
+        # Initialize playlist
         playlist = {mood: [] for mood in MOODS}
         playlist["mp4"] = {}
+
+        # Process MP3 and MP4 files
+        for file in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file)
+
+            if file.endswith('.mp3'):
+                mood = classify_song(file_path)
+                if mood in playlist:
+                    playlist[mood].append(file)  # just filename
+            elif file.endswith('.mp4'):
+                features = get_audio_features(file_path, mode="similarity")
+                if features.size > 0:
+                    audio_features_cache[file_path] = features
+
+        save_features_to_disk()
+        precompute_folder_features(folder_path)
+
+        # Compute top similar MP4s
+        mp4_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp4")]
+        for file in mp4_files:
+            file_path = os.path.join(folder_path, file)
+            target_feats = audio_features_cache.get(file_path)
+            if target_feats is None:
+                continue
+            sims = [
+                (os.path.basename(other_file), cosine_similarity(target_feats, feats))
+                for other_file, feats in audio_features_cache.items()
+                if other_file != file_path
+            ]
+            sims.sort(key=lambda x: x[1], reverse=True)
+            playlist["mp4"][file] = [f for f, _ in sims[:10]]
+
+        # Save playlist JSON
         with open(os.path.join(folder_path, 'playlist.json'), 'w') as f:
             json.dump(playlist, f, indent=2)
 
+        # Initialize liked/disliked JSON
         liked_path = os.path.join(folder_path, 'liked.json')
         disliked_path = os.path.join(folder_path, 'disliked.json')
         if not os.path.exists(liked_path):
@@ -52,60 +86,10 @@ def upload():
         if not os.path.exists(disliked_path):
             save_json(disliked_path, {"disliked": []})
 
-        # 🔹 Start background thread for processing features
-        def process_files():
-            try:
-                # Load existing playlist
-                playlist_path = os.path.join(folder_path, 'playlist.json')
-                with open(playlist_path) as f:
-                    playlist = json.load(f)
-
-                # Process MP3 and MP4 files
-                for file in os.listdir(folder_path):
-                    file_path = os.path.join(folder_path, file)
-
-                    if file.endswith('.mp3'):
-                        mood = classify_song(file_path)
-                        if mood in playlist:
-                            playlist[mood].append(file)  # just filename
-                    elif file.endswith('.mp4'):
-                        features = get_audio_features(file_path, mode="similarity")
-                        if features.size > 0:
-                            audio_features_cache[file_path] = features
-
-                save_features_to_disk()
-                precompute_folder_features(folder_path)
-
-                # Compute top similar MP4s
-                mp4_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".mp4")]
-                for file in mp4_files:
-                    file_path = os.path.join(folder_path, file)
-                    target_feats = audio_features_cache.get(file_path)
-                    if target_feats is None:
-                        continue
-                    sims = [
-                        (os.path.basename(other_file), cosine_similarity(target_feats, feats))
-                        for other_file, feats in audio_features_cache.items()
-                        if other_file != file_path
-                    ]
-                    sims.sort(key=lambda x: x[1], reverse=True)
-                    playlist["mp4"][file] = [f for f, _ in sims[:10]]
-
-                # Save updated playlist JSON
-                with open(playlist_path, 'w') as f:
-                    json.dump(playlist, f, indent=2)
-
-                print(f"✅ Finished processing files for folder {folder_id}")
-
-            except Exception as e:
-                print(f"❌ Error in background processing: {e}")
-
-        threading.Thread(target=process_files, daemon=True).start()
-
-        # Immediately redirect to player
         return redirect(url_for('player', folder_id=folder_id))
 
     return render_template("upload.html")
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     load_features_cache()
@@ -145,17 +129,7 @@ def index():
             disliked=[]
         )
 
-    # Show "Processing" message if playlist is still empty
-    if not any(playlist.values()):
-        return render_template(
-            'home.html',
-            message="Your songs are being processed, please wait…",
-            playlist={},
-            folder_id=folder_id,
-            liked=liked_songs,
-            disliked=disliked_songs
-        )
-
+    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
     return render_template(
         'home.html',
         playlist=playlist,
@@ -184,17 +158,6 @@ def player(folder_id):
 
     liked_data = load_json(os.path.join(folder_path, 'liked.json'), {"liked": []})
     disliked_data = load_json(os.path.join(folder_path, 'disliked.json'), {"disliked": []})
-
-    # If empty → show processing message
-    if not any(playlist.values()):
-        return render_template(
-            'home.html',
-            message="Songs are being analyzed, please check back in a moment.",
-            playlist={},
-            folder_id=folder_id,
-            liked=liked_data["liked"],
-            disliked=disliked_data["disliked"]
-        )
 
     return render_template(
         'home.html',
