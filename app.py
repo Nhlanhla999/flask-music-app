@@ -27,6 +27,9 @@ def upload():
         if not files:
             return "No files uploaded", 400
 
+        # Create upload root if not exists
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
         # Create a unique folder to store this upload
         folder_id = str(uuid.uuid4())
         folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
