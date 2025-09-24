@@ -145,7 +145,17 @@ def index():
             disliked=[]
         )
 
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
+    # Show "Processing" message if playlist is still empty
+    if not any(playlist.values()):
+        return render_template(
+            'home.html',
+            message="Your songs are being processed, please wait…",
+            playlist={},
+            folder_id=folder_id,
+            liked=liked_songs,
+            disliked=disliked_songs
+        )
+
     return render_template(
         'home.html',
         playlist=playlist,
@@ -175,6 +185,17 @@ def player(folder_id):
     liked_data = load_json(os.path.join(folder_path, 'liked.json'), {"liked": []})
     disliked_data = load_json(os.path.join(folder_path, 'disliked.json'), {"disliked": []})
 
+    # If empty → show processing message
+    if not any(playlist.values()):
+        return render_template(
+            'home.html',
+            message="Songs are being analyzed, please check back in a moment.",
+            playlist={},
+            folder_id=folder_id,
+            liked=liked_data["liked"],
+            disliked=disliked_data["disliked"]
+        )
+
     return render_template(
         'home.html',
         playlist=playlist,
@@ -182,6 +203,7 @@ def player(folder_id):
         liked=liked_data["liked"],
         disliked=disliked_data["disliked"]
     )
+
 
 
 @app.route('/library/<folder_id>')
