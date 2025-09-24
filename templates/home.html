@@ -787,8 +787,11 @@ footer .info {
     <div id="homeContent">
     </div>
   </main>
-
   <div id="homeContent">
+    {% if message %}
+  <div id="processingMessage">{{ message }}</div>
+{% endif %}
+
 </main>
 
 <!-- Mini video above footer -->
@@ -1458,6 +1461,28 @@ playPauseBtn.addEventListener('click', () => {
       window.currentPlayer.pause();
       playPauseIcon.classList.replace('fa-pause','fa-play');
     }
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const messageEl = document.querySelector("#processingMessage");
+    if (!messageEl) return;
+
+    const folderId = document.body.dataset.folderId;
+    if (!folderId) return;
+
+    // Poll every 5 seconds
+    const interval = setInterval(() => {
+      fetch(`/api/playlist/${folderId}`)
+        .then(res => res.json())
+        .then(data => {
+          const hasSongs = Object.values(data).some(arr => arr.length > 0);
+          if (hasSongs) {
+            clearInterval(interval);
+            window.location.reload(); // reload page when songs appear
+          }
+        })
+        .catch(err => console.error("Error fetching playlist:", err));
+    }, 5000);
   });
 
 
