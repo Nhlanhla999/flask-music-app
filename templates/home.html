@@ -747,8 +747,8 @@ footer .info {
 <div id="uploadBox">
   <form method="POST" enctype="multipart/form-data" action="/upload" class="uploadForm">
     <label class="uploadInput">
-      📂 <span>Select File</span>
-      <input type="file" name="music_zip" accept=".zip" required hidden>
+      📂 <span>Select Folder</span>
+      <input type="file" name="music_files" webkitdirectory directory multiple required hidden>
     </label>
     <button type="submit" class="submit-btn uploadBtn">⬆️ <span>Upload</span></button>
   </form>
