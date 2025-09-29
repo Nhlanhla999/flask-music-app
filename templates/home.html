@@ -743,16 +743,10 @@ footer .info {
   <div id="searchResults" class="search-results"></div>
 </div>
 
-
-<div id="uploadBox">
-  <form method="POST" enctype="multipart/form-data" action="/upload" class="uploadForm">
-    <label class="uploadInput">
-      📂 <span>Select Folder</span>
-      <input type="file" name="music_files" webkitdirectory directory multiple required hidden>
-    </label>
-    <button type="submit" class="submit-btn uploadBtn">⬆️ <span>Upload</span></button>
-  </form>
-</div>
+    <div class="uploadInput" id="uploadBox">
+      📂 <span id="status">No folder uploaded.</span>
+      <input type="file" id="fileInput" webkitdirectory directory multiple required hidden>
+    </div>
 
   </header>
   
@@ -1322,9 +1316,133 @@ function createFloatingDropdown(anchor, title) {
 }
 
 
+// ---------------- Constants & Storage ----------------
+const MOODS = ['feel_good', 'sad', 'energetic', 'relax','party', 'romance'];
+
+const MAX_RESULTS = 10;
+let audioFeaturesCache = JSON.parse(localStorage.getItem("audioFeaturesCache") || "{}");
+
+async function getAudioFeatures(file, mode="mood") {
+    return new Promise((resolve)=>{
+        const reader = new FileReader();
+        reader.onload = async (e)=>{
+            try {
+                const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+                const buffer = await audioCtx.decodeAudioData(e.target.result);
+                const data = buffer.getChannelData(0);
+                let rms=0, zcr=0;
+                for(let i=0;i<data.length;i++){
+                    rms+=data[i]**2;
+                    if(i>0 && Math.sign(data[i])!==Math.sign(data[i-1])) zcr++;
+                }
+                rms = Math.sqrt(rms/data.length);
+                zcr /= data.length;
+                if(mode==="similarity") audioFeaturesCache[file.name] = [rms,zcr];
+                localStorage.setItem("audioFeaturesCache", JSON.stringify(audioFeaturesCache));
+                resolve([rms,zcr]);
+            } catch(e) { console.error(e); resolve([]); }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function cosineSimilarity(vec1, vec2){
+    const norm1 = Math.sqrt(vec1.reduce((sum,x)=>sum+x*x,0));
+    const norm2 = Math.sqrt(vec2.reduce((sum,x)=>sum+x*x,0));
+    if(norm1===0 || norm2===0) return 0;
+    const dot = vec1.reduce((sum,x,i)=>sum+x*vec2[i],0);
+    return dot/(norm1*norm2);
+}
 
 
+function classifySong(features) {
+    if(!features || features.length === 0) return "unknown";
+    const idx = Math.floor(Math.random()*MOODS.length);
+    return MOODS[idx];
+}
+// ---------------- Folder Processing & Upload ----------------
+async function processAndUploadFiles(files) {
+    const statusEl = document.getElementById("status");
+    if (!files || files.length === 0) return;
 
+    const folderId = crypto.randomUUID();
+    const playlist = { mp4: {} };
+    const mp4Files = [];
+    MOODS.forEach(m => playlist[m] = []);
+
+    statusEl.textContent = "Processing folder...";
+
+    // Process MP3 & MP4
+    for (const file of files) {
+        if (file.name.toLowerCase().endsWith(".mp3")) {
+            const features = await getAudioFeatures(file, "mood");
+            const mood = classifySong(features);
+            playlist[mood].push(file.name);
+        } else if (file.name.toLowerCase().endsWith(".mp4")) {
+            mp4Files.push(file);
+        }
+    }
+
+    // Compute MP4 similarities
+    for (const file of mp4Files) {
+        await getAudioFeatures(file, "similarity");  // fill audioFeaturesCache
+    }
+
+    for (const file of mp4Files) {
+        const featsA = audioFeaturesCache[file.name];
+        if (!featsA) continue;
+
+        const sims = mp4Files
+            .filter(f => f.name !== file.name)
+            .map(f => [f.name, cosineSimilarity(featsA, audioFeaturesCache[f.name] || [0,0])])
+            .sort((a,b)=>b[1]-a[1])
+            .slice(0, MAX_RESULTS)
+            .map(x=>x[0]);
+
+        playlist.mp4[file.name] = sims;
+    }
+
+    // Prepare FormData for upload
+    const formData = new FormData();
+    formData.append("folderId", folderId);
+    for (const file of files) formData.append("music_files", file, file.name);
+    formData.append("playlist_json", JSON.stringify(playlist));
+
+    statusEl.textContent = "Uploading folder...";
+
+    try {
+        const res = await fetch("/upload", { method: "POST", body: formData });
+        if (!res.ok) throw new Error("Upload failed");
+
+        const result = await res.json();
+        localStorage.setItem("playlist_" + result.folder_id, JSON.stringify(result.playlist));
+        statusEl.textContent = "Folder uploaded!";
+        // Redirect to player
+        window.location.href = `/player/${result.folder_id}`;
+    } catch(err) {
+        console.error("Upload error:", err);
+        statusEl.textContent = "Upload failed!";
+        alert("Upload failed");
+    }
+}
+// ---------------- Attach to Input/DragDrop ----------------
+const uploadBox = document.getElementById("uploadBox");
+const fileInput = document.getElementById("fileInput");
+
+uploadBox.onclick = () => fileInput.click();
+
+fileInput.onchange = e => {
+    const files = [...e.target.files];
+    processAndUploadFiles(files);
+};
+
+uploadBox.ondragover = e => { e.preventDefault(); uploadBox.style.borderColor="#00f"; };
+uploadBox.ondragleave = e => { e.preventDefault(); uploadBox.style.borderColor="#666"; };
+uploadBox.ondrop = e => {
+    e.preventDefault();
+    const files = [...e.dataTransfer.files];
+    processAndUploadFiles(files);
+};
 
 
 const likedSongs = new Set();
