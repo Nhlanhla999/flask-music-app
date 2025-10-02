@@ -18,142 +18,40 @@ SIMILARITY_THRESHOLD = 0.7  # Only return videos with >= 70% similarity
 MAX_RESULTS = 10
 playlist_queue = {}
 
+
 MOODS = ['feel_good', 'sad', 'energetic', 'relax','party', 'romance']
-
-
-@app.route("/upload", methods=["POST"])
-def upload():
-    files = request.files.getlist("music_files")
-    playlist_json = request.form.get("playlist_json")
-    folder_id = request.form.get("folderId") or str(uuid.uuid4())
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
-    os.makedirs(folder_path, exist_ok=True)
-
-    # Save uploaded files
-    for f in files:
-        filename_only = os.path.basename(f.filename)
-        f.save(os.path.join(folder_path, filename_only))
-
-    # Save playlist JSON
-    if playlist_json:
-        playlist = json.loads(playlist_json)
-        with open(os.path.join(folder_path, "playlist.json"), "w", encoding="utf-8") as f:
-            json.dump(playlist, f, indent=2)
-    else:
-        playlist = {}
-
-    return jsonify({"folder_id": folder_id, "playlist": playlist})
-
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    load_features_cache()
-    uploads = os.listdir(app.config['UPLOAD_FOLDER'])
-    folder_id = None
-    playlist = {}
-    liked_songs = []
-    disliked_songs = []
-
-    # Look for the most recent folder with playlist.json
-    for folder in sorted(uploads, reverse=True):
-        folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder)
-        playlist_path = os.path.join(folder_path, 'playlist.json')
-        if os.path.isdir(folder_path) and os.path.exists(playlist_path):
-            folder_id = folder
-            with open(playlist_path, 'r') as f:
-                playlist = json.load(f)
-
-            liked_path = os.path.join(folder_path, 'liked.json')
-            disliked_path = os.path.join(folder_path, 'disliked.json')
-            if not os.path.exists(liked_path):
-                save_json(liked_path, {"liked": []})
-            if not os.path.exists(disliked_path):
-                save_json(disliked_path, {"disliked": []})
-
-            liked_songs = load_json(liked_path, {"liked": []})["liked"]
-            disliked_songs = load_json(disliked_path, {"disliked": []})["disliked"]
-            break
-
-    if not folder_id:
-        return render_template(
-            'home.html',
-            message="No playlist found. Please upload a music folder.",
-            playlist={},
-            folder_id=None,
-            liked=[],
-            disliked=[]
-        )
-
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
+ 
     return render_template(
-        'home.html',
-        playlist=playlist,
-        folder_id=folder_id,
-        liked=liked_songs,
-        disliked=disliked_songs
+        'home.html'
+       
     )
 
-
-@app.route('/player/<folder_id>', methods=['GET', 'POST'])
-def player(folder_id):
-    load_features_cache()
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
-
-    if not os.path.exists(folder_path):
-        return f"Folder {folder_id} not found.", 404
-
-    # Load existing playlist
-    playlist_path = os.path.join(folder_path, 'playlist.json')
-    if os.path.exists(playlist_path):
-        with open(playlist_path) as f:
-            playlist = json.load(f)
-    else:
-        playlist = {mood: [] for mood in MOODS}
-        playlist["mp4"] = {}
-
-    liked_data = load_json(os.path.join(folder_path, 'liked.json'), {"liked": []})
-    disliked_data = load_json(os.path.join(folder_path, 'disliked.json'), {"disliked": []})
+@app.route('/library')
+def library():
+  
 
     return render_template(
         'home.html',
-        playlist=playlist,
-        folder_id=folder_id,
-        liked=liked_data["liked"],
-        disliked=disliked_data["disliked"]
+      
     )
 
 
+@app.route('/api/home')
+def api_home():
 
-@app.route('/library/<folder_id>')
-def library(folder_id):
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
+    return render_template('partials/home_content.html')
 
-    # Load main playlist
-    with open(os.path.join(folder_path, 'playlist.json')) as f:
-        playlist = json.load(f)
 
-    # Flatten all songs
-    all_songs = []
-    for mood, songs in playlist.items():
-        for song in songs:
-            all_songs.append({'title': song, 'mood': mood})
-
-    # Support both string and dict in case songs include metadata like duration
-    mp3_songs = [s for s in all_songs if (s['title'] if isinstance(s, dict) else s).lower().endswith('.mp3')]
-    mp4_songs = [s for s in all_songs if (s['title'] if isinstance(s, dict) else s).lower().endswith('.mp4')]
-
-    liked_path = os.path.join(folder_path, 'liked.json')
-    liked_data = load_json(liked_path, {"liked": []})
-    liked_songs = liked_data["liked"]
-
+@app.route('/api/library')
+def api_library():
     return render_template(
-        'home.html',
-        songs=all_songs,
-        liked_songs=liked_songs,
-         mp3_songs=mp3_songs,
-        mp4_songs=mp4_songs,
-        folder_id=folder_id
+        'partials/library_content.html'
+     
     )
+
 
 
 @app.route('/api/playlist/<folder_id>')
@@ -272,30 +170,6 @@ def get_disliked_songs(folder_id):
     disliked_data = load_json(disliked_path, {"disliked": []})
     return jsonify(disliked_data["disliked"])
 
-@app.route('/songs/<folder_id>')
-def get_songs_by_mood(folder_id):
-    mood = request.args.get('mood', 'all')
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
-
-    with open(os.path.join(folder_path, 'playlist.json')) as f:
-        playlist = json.load(f)
-
-    if mood == 'all':
-        songs = [
-            {'title': song, 'mood': m}
-            for m, songlist in playlist.items()
-            for song in songlist if not song.lower().endswith('.mp4')  # ⛔ Exclude .mp4
-        ]
-    else:
-        songs = [
-            {'title': song, 'mood': mood}
-            for song in playlist.get(mood, [])
-            if not song.lower().endswith('.mp4')  # ⛔ Exclude .mp4
-        ]
-
-    return jsonify({'songs': songs})  # ✅ Wrap the response
-
-
 @app.route('/api/playlist/<folder_id>')
 def get_playlist(folder_id):
     folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
@@ -308,58 +182,8 @@ def get_playlist(folder_id):
 
     return jsonify({'error': 'Playlist not found'}), 404
 
-@app.route('/api/home')
-def api_home():
-    uploads = os.listdir(app.config['UPLOAD_FOLDER'])
-    folder_id = None
-    playlist = {}
-
-    for folder in sorted(uploads, reverse=True):
-        folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder)
-        playlist_path = os.path.join(folder_path, 'playlist.json')
-        if os.path.isdir(folder_path) and os.path.exists(playlist_path):
-            folder_id = folder
-            with open(playlist_path, 'r') as f:
-                playlist = json.load(f)
-            break
-
-    return render_template('partials/home_content.html', playlist=playlist)
 
 
-# ----------------------------
-# API: Load partial content for Library
-# ----------------------------
-@app.route('/api/library/<folder_id>')
-def api_library(folder_id):
-    folder_path = os.path.join(app.config['UPLOAD_FOLDER'], folder_id)
-    playlist_path = os.path.join(folder_path, 'playlist.json')
-
-    if not os.path.exists(playlist_path):
-        return jsonify({'error': 'Playlist not found'}), 404
-
-    with open(playlist_path, 'r') as f:
-        playlist = json.load(f)
-
-    # Flatten songs for frontend
-    all_songs = []
-    for mood, songs in playlist.items():
-        for song in songs:
-            all_songs.append({'title': song, 'mood': mood})
-
-    # Support both string and dict in case songs include metadata like duration
-    mp3_songs = [s for s in all_songs if (s['title'] if isinstance(s, dict) else s).lower().endswith('.mp3')]
-    mp4_songs = [s for s in all_songs if (s['title'] if isinstance(s, dict) else s).lower().endswith('.mp4')]
-    liked_path = os.path.join(folder_path, 'liked.json')
-    liked_data = load_json(liked_path, {"liked": []})
-
-    return render_template(
-        'partials/library_content.html',
-        songs=all_songs,
-        liked_songs=liked_data["liked"],
-        folder_id=folder_id,
-        mp3_songs=mp3_songs,
-        mp4_songs=mp4_songs
-    )
 def normalize_filename(name: str) -> str:
     """Lowercase, replace spaces with underscores, remove common URL encoding issues."""
     return (
@@ -515,5 +339,3 @@ with app.app_context():
         print("✅ Repaired video_logs.json in:", fixed)
     else:
         print("ℹ️ No corrupted video_logs.json files found.")
-
-
