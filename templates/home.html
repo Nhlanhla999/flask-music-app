@@ -733,6 +733,7 @@ footer .info {
 </style>
 </head>
 <body>
+
   <!-- Sidebar Toggle Header -->
   <header class="topbar">
     <button id="toggleSidebarBtn">☰</button>
@@ -743,10 +744,17 @@ footer .info {
   <div id="searchResults" class="search-results"></div>
 </div>
 
+
+
+  
     <div class="uploadInput" id="uploadBox">
       📂 <span id="status">No folder uploaded.</span>
       <input type="file" id="fileInput" webkitdirectory directory multiple required hidden>
     </div>
+
+
+
+
 
   </header>
   
@@ -781,9 +789,8 @@ footer .info {
     <div id="homeContent">
     </div>
   </main>
+
   <div id="homeContent">
-
-
 </main>
 
 <!-- Mini video above footer -->
@@ -890,7 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let repeatMode = 0;
 
   let activePlaylist = currentPlaylist;
-  const folderId = document.body.dataset.folderId;
+ 
 
   // Activate nav links
   function setActive(link) {
@@ -1034,46 +1041,88 @@ async function getSongsByMood(folderId, mood='all') {
   return songs;
 }
 
-function setupLibraryTabs() {
-  ['mp3', 'mp4', 'liked'].forEach(type => {
-    const btn = document.querySelector(`button[onclick="showPlaylist('${type}')"]`);
-    btn?.addEventListener('click', () => {
-      // Hide all playlists and placeholders
-      ['mp3', 'mp4', 'liked'].forEach(t => {
-        const el = document.getElementById(`${t}Playlist`);
-        if (el) el.style.display = 'none';
+
+
+  
+// ================== Library Tabs Setup ==================
+async function setupLibraryTabs() {
+  const buttons = document.querySelectorAll('.playlistbtn[data]');
+  if (!buttons.length) return;
+
+  const folderId = localStorage.getItem("current_playlist"); 
+  if (!folderId) return;
+
+  // Preload songs from IndexedDB
+  const playlist = await getPlaylist(folderId); // same as in getSongsByMood
+  if (!playlist) return;
+
+  const mp3Songs = [];
+  for (const mood of MOODS) {
+    if (playlist[mood]) mp3Songs.push(...playlist[mood]);
+  }
+  const mp4Songs = Object.values(playlist.mp4 || {});
+  const likedSongs = playlist.liked || [];
+
+  const songMap = { mp3: mp3Songs, mp4: mp4Songs, liked: likedSongs };
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data'); // mp3, mp4, liked
+
+      // Hide all playlists + containers
+      ['mp3','mp4','liked'].forEach(t => {
+        document.getElementById(`${t}Playlist`)?.style.setProperty('display','none');
       });
       ['showMP3Container','showMP4Container','showLikedContainer'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
+        document.getElementById(id)?.style.setProperty('display','none');
       });
       ['mp3Container','mainVideoContainer','likedVideoContainer'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
+        document.getElementById(id)?.style.setProperty('display','none');
       });
 
-      // Show the relevant one
-      if (type === 'mp3') {
-        document.getElementById('mp3Playlist').style.display = 'block';
-        document.getElementById('showMP3Container').style.display = 'flex';
-        document.getElementById('mp3Container').style.display = 'block';
+      // Render songs into the proper table
+      if (type === 'mp3') renderSongs('Mp3body', songMap.mp3);
+      if (type === 'mp4') renderSongs('Mp4body', songMap.mp4);
+      if (type === 'liked') renderSongs('Likedbody', songMap.liked);
 
-      } else if (type === 'mp4') {
-        document.getElementById('mp4Playlist').style.display = 'block';
-        document.getElementById('showMP4Container').style.display = 'flex';
-        document.getElementById('mainVideoContainer').style.display = 'block';
-      } else if (type === 'liked') {
-        document.getElementById('likedPlaylist').style.display = 'block';
-        document.getElementById('showLikedContainer').style.display = 'flex';
-        document.getElementById('likedVideoContainer').style.display = 'block';
-      }
+      // Show the correct container
+      const playlistEl = document.getElementById(`${type}Playlist`);
+      const showContainerEl = document.getElementById(type === 'mp3' ? 'showMP3Container' :
+                                                     type === 'mp4' ? 'showMP4Container' :
+                                                     'showLikedContainer');
+      const mainContainerEl = document.getElementById(type === 'mp3' ? 'mp3Container' :
+                                                      type === 'mp4' ? 'mainVideoContainer' :
+                                                      'likedVideoContainer');
 
-       if (currentSongTitle) {
-    highlightCurrentRow(currentSongTitle);
-  }
+      if (playlistEl) playlistEl.style.display = 'block';
+      if (showContainerEl) showContainerEl.style.display = 'flex';
+      if (mainContainerEl) mainContainerEl.style.display = 'block';
+
+      if (window.currentSongTitle) highlightCurrentRow(window.currentSongTitle);
     });
   });
+
+  // Optional: auto-click the first tab (MP3) by default
+  buttons[0]?.click();
 }
+
+// Helper to render songs into tbody
+function renderSongs(bodyId, songs) {
+  const tbody = document.getElementById(bodyId);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  songs.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.classList.add('playlist-row');
+    tr.setAttribute('data-file', s.filename);
+    tr.dataset.fileNormalized = normalizeKey(s.filename);
+    tr.innerHTML = `<td>${s.filename}</td>`;
+    tbody.appendChild(tr);
+  });
+  bindPlaylistRows(`#${bodyId} tr`);
+}
+
+
 
 
 function bindShuffleButtons() {
@@ -1322,7 +1371,6 @@ function createFloatingDropdown(anchor, title) {
     return dropdown;
 }
 
-
 // ---------------- Constants & Storage ----------------
 const MOODS = ['feel_good', 'sad', 'energetic', 'relax','party', 'romance'];
 
@@ -1376,6 +1424,8 @@ async function fileToBase64(file) {
         reader.readAsDataURL(file);
     });
 }
+
+
 async function processAndUploadFiles(files) {
   const statusEl = document.getElementById("status");
   if (!files || files.length === 0) return;
@@ -1424,7 +1474,7 @@ async function processAndUploadFiles(files) {
     await savePlaylist(folderId, playlist);
     statusEl.textContent = "Playlist saved!";
     localStorage.setItem("current_playlist", folderId);
-    window.location.href = `/player/${folderId}`;
+    window.location.href = `/?folder_id=${folderId}`;
   } catch(err) {
     console.error("IndexedDB save error:", err);
     statusEl.textContent = "Save failed!";
@@ -1557,6 +1607,8 @@ function updateUI(title) {
         if (key === 'dislike' && dislikedSongs.has(title)) item.classList.add('active', 'disliked');
     });
 }
+
+
 function addFooterKebab() {
     const footer = document.querySelector("footer");
     if (!footer) return;
@@ -1630,6 +1682,7 @@ playPauseBtn.addEventListener('click', () => {
       playPauseIcon.classList.replace('fa-pause','fa-play');
     }
   });
+
 
 const footerShuffle = document.getElementById('shuffleBtn');
 footerShuffle.addEventListener('click', () => {
@@ -1842,7 +1895,7 @@ function updateLikeDislikeButtons(title = null) {
         return a;
     }
 
-function setupVideoPlayer(mode, title = null) {
+async function setupVideoPlayer(mode, title = null) {
     const overlay = document.getElementById('videoOverlay');
     const overlayVideoContainer = document.getElementById('overlayVideoContainer');
     const overlayTable = document.getElementById('overlayTable');
@@ -1851,28 +1904,38 @@ function setupVideoPlayer(mode, title = null) {
     const closeBtn = document.getElementById('closeOverlay');
     const folderId = document.body.dataset.folderId;
 
-    if (title) {
-        if (!window.currentPlayer || window.currentPlayer.tagName !== 'VIDEO') {
-            window.currentPlayer = document.createElement('video');
-            window.currentPlayer.controls = true;
-            window.currentPlayer.autoplay = true;
+if (title) {
+    const folderId = localStorage.getItem("current_playlist"); // use localStorage
+    const playlist = await getPlaylist(folderId);
 
-            window.currentPlayer.addEventListener('play', () =>
-                playPauseIcon.classList.replace('fa-play', 'fa-pause')
-            );
-            window.currentPlayer.addEventListener('pause', () =>
-                playPauseIcon.classList.replace('fa-pause', 'fa-play')
-            );
-        }
-
-        if (window.currentPlayer.src !== `/static/uploads/${folderId}/${encodeURIComponent(title)}`) {
-            window.currentPlayer.src = `/static/uploads/${folderId}/${encodeURIComponent(title)}`;
-        }
-
-        window.currentPlayingTitle = title;
-        nowPlaying.textContent = `🎬 ${title}`;
-        updateLikeDislikeButtons(title);
+    let videoObj = playlist.mp4[title]; // fetch from IndexedDB
+    if (!videoObj) {
+        console.error("MP4 not found in playlist:", title);
+        return;
     }
+
+    if (!window.currentPlayer || window.currentPlayer.tagName !== 'VIDEO') {
+        window.currentPlayer = document.createElement('video');
+        window.currentPlayer.controls = true;
+        window.currentPlayer.autoplay = true;
+
+        window.currentPlayer.addEventListener('play', () =>
+            playPauseIcon.classList.replace('fa-play', 'fa-pause')
+        );
+        window.currentPlayer.addEventListener('pause', () =>
+            playPauseIcon.classList.replace('fa-pause', 'fa-play')
+        );
+    }
+
+    // Use blob URL instead of /static/uploads
+    const blobURL = URL.createObjectURL(videoObj.blob);
+    if (window.currentPlayer.src !== blobURL) window.currentPlayer.src = blobURL;
+
+    window.currentPlayingTitle = title;
+    nowPlaying.textContent = `🎬 ${title}`;
+    updateLikeDislikeButtons(title);
+}
+
 
     overlayVideoContainer.innerHTML = '';
     if (mode === "overlay") overlayTable.innerHTML = '';
@@ -2689,6 +2752,7 @@ function refreshUpNext() {
 
 window.currentPlayingTitle = title; // <-- ensures auto-play uses the correct title for highlighting
 window.currentSongTitle = title;
+
 async function playSong(title, fromShuffle = false, userClicked = false) {
     if (!title) return;
     const folderId = localStorage.getItem("current_playlist");
@@ -2714,7 +2778,7 @@ async function playSong(title, fromShuffle = false, userClicked = false) {
     // -------------------- MP4 --------------------
     if (isMP4) {
         let mode = userClicked ? 'overlay' : (window.currentVideoMode || 'mini');
-        setupVideoPlayer(mode, title);
+        await setupVideoPlayer(mode, title);
         playPauseIcon.classList.replace('fa-play', 'fa-pause');
         attachProgressBar(window.currentPlayer);
         updateLikeDislikeButtons(title);
@@ -2807,7 +2871,6 @@ async function playSong(title, fromShuffle = false, userClicked = false) {
     }
 }
 
-
 });
 
 </script>
@@ -2815,5 +2878,4 @@ async function playSong(title, fromShuffle = false, userClicked = false) {
 
 </body>
 </html>
-
 
