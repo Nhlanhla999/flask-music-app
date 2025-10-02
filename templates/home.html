@@ -5,7 +5,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='fontawesome-free-7.0.1-web/css/all.min.css') }}">
 
   <title>Music Player</title>
-  <style>
+  <style> 
 
  body {
   background: #000;
@@ -732,7 +732,7 @@ footer .info {
 
 </style>
 </head>
-<body data-folder-id="{{ folder_id }}">
+<body>
   <!-- Sidebar Toggle Header -->
   <header class="topbar">
     <button id="toggleSidebarBtn">☰</button>
@@ -759,7 +759,7 @@ footer .info {
     <span class="label">Home</span>
   </a>
 
-  <a href="/library/{{ folder_id }}" id="libraryLink" class="nav-link">
+  <a href="/library" id="libraryLink" class="nav-link">
     <span class="icon"><i class="fas fa-book"></i></span>
     <span class="label">Library</span>
   </a>
@@ -967,65 +967,72 @@ function loadContent(url, clickedLink) {
 }
 
 
-
 function setupMoodButtons() {
-    const moodButtons = document.querySelectorAll('.mood-btn[data-mood]');
-    const homeContent = document.getElementById('homeContent');
-    const moodList = document.getElementById('mood-song-list');
-    const songListBody = document.getElementById('song-list-body');
-    const moodTitle = document.getElementById('currentMoodTitle');
-    const folderId = document.body.dataset.folderId;
+  const moodButtons = document.querySelectorAll('.mood-btn[data-mood]');
+  const homeContent = document.getElementById('homeContent');
+  const moodList = document.getElementById('mood-song-list');
+  const songListBody = document.getElementById('song-list-body');
+  const folderId = localStorage.getItem("current_playlist");
+  if (!moodButtons.length || !folderId) return;
 
-    if (!moodButtons.length) return;
+  moodButtons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const mood = btn.dataset.mood;
+      if (currentMood === mood) return;
+      currentMood = mood;
 
-    moodButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const mood = btn.dataset.mood;
-        if (currentMood === mood) return;
-        currentMood = mood;
+      moodButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
 
-        moodButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+      homeContent.style.display = 'none';
+      moodList.style.display = 'block';
 
-        homeContent.style.display = 'none';
-        moodList.style.display = 'block';
-fetch(`/songs/${folderId}?mood=${encodeURIComponent(mood)}`)
-  .then(r => r.json())
-  .then(data => {
-    songListBody.innerHTML = '';
-    data.songs.forEach((s, i) => {
-      const tr = document.createElement('tr');
-      tr.classList.add('playlist-row');
-      tr.setAttribute('data-file', s.title);
-      tr.dataset.fileNormalized = normalizeKey(s.title); // <-- important
-      tr.innerHTML = `<td>${s.title}</td>`;
-      songListBody.appendChild(tr);
+      // Fetch songs from IndexedDB
+      const songs = await getSongsByMood(folderId, mood);
+
+      songListBody.innerHTML = '';
+      songs.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.classList.add('playlist-row');
+        tr.setAttribute('data-file', s.filename);
+        tr.dataset.fileNormalized = normalizeKey(s.filename);
+        tr.innerHTML = `<td>${s.filename}</td>`;
+        songListBody.appendChild(tr);
+      });
+
+      bindPlaylistRows('#song-list-body tr');
+      if (window.currentPlayingTitle) highlightCurrentRow(window.currentPlayingTitle);
     });
-
-    // Bind clicks and kebabs
-    bindPlaylistRows('#song-list-body tr');
-
-    // re-highlight current playing song (if any)
-    if (window.currentPlayingTitle) highlightCurrentRow(window.currentPlayingTitle);
   });
 
-
-      });
+  const homeLink = document.getElementById('homeLink');
+  if (homeLink) {
+    homeLink.addEventListener('click', e => {
+      e.preventDefault();
+      moodButtons.forEach(b => b.classList.remove('active'));
+      homeContent.style.display = 'block';
+      if (moodList) moodList.style.display = 'none';
+      history.pushState({}, '', '/');
     });
+  }
+}
 
-    const homeLink = document.getElementById('homeLink');
-    if (homeLink) {
-      homeLink.addEventListener('click', e => {
-        e.preventDefault();
-        moodButtons.forEach(b => b.classList.remove('active'));
-        homeContent.style.display = 'block';
-        if (moodList) moodList.style.display = 'none';
-        history.pushState({}, '', '/');
-      });
+async function getSongsByMood(folderId, mood='all') {
+  const playlist = await getPlaylist(folderId);
+  if (!playlist) return [];
+
+  let songs = [];
+
+  if (mood === 'all') {
+    for (const m of MOODS) {
+      if (playlist[m]) songs.push(...playlist[m]);
     }
+  } else if (playlist[mood]) {
+    songs = playlist[mood];
   }
 
-  
+  return songs;
+}
 
 function setupLibraryTabs() {
   ['mp3', 'mp4', 'liked'].forEach(type => {
@@ -1360,71 +1367,73 @@ function classifySong(features) {
     const idx = Math.floor(Math.random()*MOODS.length);
     return MOODS[idx];
 }
-// ---------------- Folder Processing & Upload ----------------
-async function processAndUploadFiles(files) {
-    const statusEl = document.getElementById("status");
-    if (!files || files.length === 0) return;
 
-    const folderId = crypto.randomUUID();
-    const playlist = { mp4: {} };
-    const mp4Files = [];
-    MOODS.forEach(m => playlist[m] = []);
-
-    statusEl.textContent = "Processing folder...";
-
-    // Process MP3 & MP4
-    for (const file of files) {
-        if (file.name.toLowerCase().endsWith(".mp3")) {
-            const features = await getAudioFeatures(file, "mood");
-            const mood = classifySong(features);
-            playlist[mood].push(file.name);
-        } else if (file.name.toLowerCase().endsWith(".mp4")) {
-            mp4Files.push(file);
-        }
-    }
-
-    // Compute MP4 similarities
-    for (const file of mp4Files) {
-        await getAudioFeatures(file, "similarity");  // fill audioFeaturesCache
-    }
-
-    for (const file of mp4Files) {
-        const featsA = audioFeaturesCache[file.name];
-        if (!featsA) continue;
-
-        const sims = mp4Files
-            .filter(f => f.name !== file.name)
-            .map(f => [f.name, cosineSimilarity(featsA, audioFeaturesCache[f.name] || [0,0])])
-            .sort((a,b)=>b[1]-a[1])
-            .slice(0, MAX_RESULTS)
-            .map(x=>x[0]);
-
-        playlist.mp4[file.name] = sims;
-    }
-
-    // Prepare FormData for upload
-    const formData = new FormData();
-    formData.append("folderId", folderId);
-    for (const file of files) formData.append("music_files", file, file.name);
-    formData.append("playlist_json", JSON.stringify(playlist));
-
-    statusEl.textContent = "Uploading folder...";
-
-    try {
-        const res = await fetch("/upload", { method: "POST", body: formData });
-        if (!res.ok) throw new Error("Upload failed");
-
-        const result = await res.json();
-        localStorage.setItem("playlist_" + result.folder_id, JSON.stringify(result.playlist));
-        statusEl.textContent = "Folder uploaded!";
-        // Redirect to player
-        window.location.href = `/player/${result.folder_id}`;
-    } catch(err) {
-        console.error("Upload error:", err);
-        statusEl.textContent = "Upload failed!";
-        alert("Upload failed");
-    }
+async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]); // get base64 string only
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 }
+async function processAndUploadFiles(files) {
+  const statusEl = document.getElementById("status");
+  if (!files || files.length === 0) return;
+
+  const folderId = crypto.randomUUID();
+  const playlist = { mp4: {} };
+  const mp4Files = [];
+
+  // initialize moods as empty arrays
+  MOODS.forEach(m => playlist[m] = []);
+
+  statusEl.textContent = "Processing folder...";
+
+  for (const file of files) {
+    const fileObj = { filename: file.name, content_type: file.type, blob: file };
+
+    if (file.name.toLowerCase().endsWith(".mp3")) {
+      const features = await getAudioFeatures(file, "mood");
+      const mood = classifySong(features);
+      playlist[mood].push(fileObj); // store MP3 under its classified mood
+    } else if (file.name.toLowerCase().endsWith(".mp4")) {
+      mp4Files.push({ file, fileObj });
+    }
+  }
+
+  // Compute MP4 similarities (optional)
+  for (const { file } of mp4Files) await getAudioFeatures(file, "similarity");
+
+  for (const { file, fileObj } of mp4Files) {
+    const featsA = audioFeaturesCache[file.name];
+    if (!featsA) continue;
+
+    const sims = mp4Files
+      .filter(f => f.file.name !== file.name)
+      .map(f => [f.file.name, cosineSimilarity(featsA, audioFeaturesCache[f.file.name] || [0,0])])
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0, MAX_RESULTS)
+      .map(x=>x[0]);
+
+    playlist.mp4[file.name] = { ...fileObj, similar: sims };
+  }
+
+  // Save to IndexedDB
+  statusEl.textContent = "Saving playlist locally...";
+  try {
+    await savePlaylist(folderId, playlist);
+    statusEl.textContent = "Playlist saved!";
+    localStorage.setItem("current_playlist", folderId);
+    window.location.href = `/player/${folderId}`;
+  } catch(err) {
+    console.error("IndexedDB save error:", err);
+    statusEl.textContent = "Save failed!";
+    alert("Failed to save playlist locally.");
+  }
+}
+
+
+
 // ---------------- Attach to Input/DragDrop ----------------
 const uploadBox = document.getElementById("uploadBox");
 const fileInput = document.getElementById("fileInput");
@@ -1443,6 +1452,49 @@ uploadBox.ondrop = e => {
     const files = [...e.dataTransfer.files];
     processAndUploadFiles(files);
 };
+
+const DB_NAME = "musicDB";
+const DB_VERSION = 1;
+let db;
+
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if (!db.objectStoreNames.contains("playlists")) {
+                db.createObjectStore("playlists", { keyPath: "folder_id" });
+            }
+        };
+        request.onsuccess = (e) => { db = e.target.result; resolve(db); };
+        request.onerror = (e) => reject(e);
+    });
+}
+
+async function savePlaylist(folder_id, playlist) {
+    await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction("playlists", "readwrite");
+        const store = tx.objectStore("playlists");
+        store.put({ folder_id, playlist });
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e);
+    });
+}
+
+async function getPlaylist(folder_id) {
+    await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction("playlists", "readonly");
+        const store = tx.objectStore("playlists");
+        const request = store.get(folder_id);
+        request.onsuccess = () => resolve(request.result ? request.result.playlist : null);
+        request.onerror = (e) => reject(e);
+    });
+}
+
+
+
 
 
 const likedSongs = new Set();
@@ -2637,15 +2689,12 @@ function refreshUpNext() {
 
 window.currentPlayingTitle = title; // <-- ensures auto-play uses the correct title for highlighting
 window.currentSongTitle = title;
-
-
-// -------------------- PLAY SONG --------------------
-function playSong(title, fromShuffle = false, userClicked = false) {
+async function playSong(title, fromShuffle = false, userClicked = false) {
     if (!title) return;
-    const folderId = document.body.dataset.folderId;
+    const folderId = localStorage.getItem("current_playlist");
     if (!folderId) return;
 
-        // update current song globally
+    // update global state
     window.currentPlayingTitle = title;
     window.currentSongTitle = title;
     window.currentSongIndex = currentPlaylist.indexOf(title);
@@ -2653,32 +2702,19 @@ function playSong(title, fromShuffle = false, userClicked = false) {
     const isMP4 = title.toLowerCase().endsWith('.mp4');
     const isMP3 = title.toLowerCase().endsWith('.mp3');
 
-    // Pause any previous player
+    // Pause previous player
     if (window.currentPlayer) window.currentPlayer.pause();
 
-    // Log play
+    // Log play (optional)
     fetch(`/log_play/${folderId}/${encodeURIComponent(title)}`, { method: 'POST' })
         .catch(err => console.error('Failed to log play:', err));
 
-    // Track the playlist of the current song
     window.activePlaylist = currentPlaylist;
-    window.currentSongTitle = title;
-    window.currentSongIndex = currentPlaylist.indexOf(title);
 
     // -------------------- MP4 --------------------
     if (isMP4) {
-        // Determine mode
-        let mode;
-        if (userClicked) {
-            mode = 'overlay';
-            window.userClosedOverlay = false;
-        } else {
-            mode = window.currentVideoMode || 'mini';
-        }
-
+        let mode = userClicked ? 'overlay' : (window.currentVideoMode || 'mini');
         setupVideoPlayer(mode, title);
-
-        // Footer & highlight logic
         playPauseIcon.classList.replace('fa-play', 'fa-pause');
         attachProgressBar(window.currentPlayer);
         updateLikeDislikeButtons(title);
@@ -2692,116 +2728,85 @@ function playSong(title, fromShuffle = false, userClicked = false) {
         );
     }
 
-// -------------------- MP3 --------------------
-else if (isMP3) {
-    const miniContainer = document.getElementById('miniVideoContainer');
-    const overlay = document.getElementById('videoOverlay');
-    const overlayVideoContainer = document.getElementById('overlayVideoContainer');
-    const overlayTable = document.getElementById('overlayTable');
-
-    // Clear overlay table and video
-    if (overlayVideoContainer) overlayVideoContainer.innerHTML = '';
-    if (overlayTable) overlayTable.innerHTML = '';
-    if (overlay) overlay.style.display = 'none';
-
-    if (miniContainer) {
-        miniContainer.innerHTML = '';
-        miniContainer.style.display = 'none';
-    }
-
-    const mediaContainer = document.getElementById('mediaContainer');
-    let footerAudio = document.getElementById('footerAudio');
-    if (!footerAudio) {
-        footerAudio = document.createElement('audio');
-        footerAudio.id = 'footerAudio';
-        footerAudio.controls = true;
-        footerAudio.autoplay = true;
-        footerAudio.style.display = 'none';
-        mediaContainer.appendChild(footerAudio);
-    }
-
-    window.currentPlayer = footerAudio;
-    window.currentPlayer.src = `/static/uploads/${folderId}/${encodeURIComponent(title)}`;
-
-    document.getElementById('nowPlaying').textContent = `🎶 ${title}`;
-    attachProgressBar(window.currentPlayer);
-    highlightCurrentRow(title);
-    updateLikeDislikeButtons(title);
-
-    window.currentPlayer.addEventListener('play', () =>
-        playPauseIcon.classList.replace('fa-play', 'fa-pause')
-    );
-    window.currentPlayer.addEventListener('pause', () =>
-        playPauseIcon.classList.replace('fa-pause', 'fa-play')
-    );
-
-    // Reset footer layout for small screens (as you already have)
-    const footer = document.querySelector('footer');
-    if (footer && window.innerWidth <= 768) {
-        footer.classList.remove('footer-has-mini');
-        footer.style.justifyContent = 'center';
-        footer.style.paddingLeft = '';
-        const repeatBtn = document.getElementById('repeatBtn');
-        const shuffleBtn = document.getElementById('shuffleBtn');
-        const kebab = footer.querySelector('.footer-kebab');
-        if (repeatBtn) repeatBtn.style.display = 'flex';
-        if (shuffleBtn) shuffleBtn.style.display = 'flex';
-        if (kebab) {
-            kebab.style.display =
-                window.innerWidth > 500 && window.innerWidth <= 768
-                    ? 'inline-flex'
-                    : 'none';
-        }
-    }
-}
-
-
-if (window.currentPlayer) {
-    window.currentPlayer.onended = () => {
-        let nextTitle = null;
-
-        // Priority: upNextQueue
-        if (window.upNextQueue.length > 0) {
-            nextTitle = window.upNextQueue.shift();
-            // Update currentSongIndex to match playlist if it exists
-            const idx = currentPlaylist.indexOf(nextTitle);
-            if (idx >= 0) currentSongIndex = idx;
-        } 
-        // Repeat one
-        else if (repeatMode === 2) {
-            nextTitle = window.activePlaylist[window.currentSongIndex];
-        } 
-        // Repeat all
-        else if (repeatMode === 1) {
-            currentSongIndex = (currentSongIndex + 1) % window.activePlaylist.length;
-            nextTitle = window.activePlaylist[currentSongIndex];
-        } 
-        // Normal playlist flow
-        else if (currentSongIndex < window.activePlaylist.length - 1) {
-            currentSongIndex++;
-            nextTitle = window.activePlaylist[currentSongIndex];
+    // -------------------- MP3 --------------------
+    else if (isMP3) {
+        const mediaContainer = document.getElementById('mediaContainer');
+        let footerAudio = document.getElementById('footerAudio');
+        if (!footerAudio) {
+            footerAudio = document.createElement('audio');
+            footerAudio.id = 'footerAudio';
+            footerAudio.controls = true;
+            footerAudio.autoplay = true;
+            footerAudio.style.display = 'none';
+            mediaContainer.appendChild(footerAudio);
         }
 
-        if (nextTitle) {
-            // Determine mode for auto-play
-            const mode = window.currentVideoMode || 'mini';
-            playSong(nextTitle, false, false);
+        window.currentPlayer = footerAudio;
 
-            // Reparent mini video if needed
-            if (mode === 'mini' && window.innerWidth <= 768) {
-                reparentMiniVideo();
+        // Fetch song from IndexedDB
+        const playlist = await getPlaylist(folderId);
+        let songObj;
+        for (const mood of MOODS) {
+            const songs = playlist[mood] || [];
+            songObj = songs.find(s => s.filename === title);
+            if (songObj) break;
+        }
+
+        if (!songObj) {
+            console.error("Song not found in IndexedDB:", title);
+            return;
+        }
+
+        // Use Blob URL
+        const blobURL = URL.createObjectURL(songObj.blob);
+        window.currentPlayer.src = blobURL;
+        window.currentPlayer.play();
+
+        document.getElementById('nowPlaying').textContent = `🎶 ${title}`;
+        attachProgressBar(window.currentPlayer);
+        highlightCurrentRow(title);
+        updateLikeDislikeButtons(title);
+
+        window.currentPlayer.addEventListener('play', () =>
+            playPauseIcon.classList.replace('fa-play', 'fa-pause')
+        );
+        window.currentPlayer.addEventListener('pause', () =>
+            playPauseIcon.classList.replace('fa-pause', 'fa-play')
+        );
+    }
+
+    // -------------------- Auto-play next --------------------
+    if (window.currentPlayer) {
+        window.currentPlayer.onended = () => {
+            let nextTitle = null;
+            if (window.upNextQueue.length > 0) {
+                nextTitle = window.upNextQueue.shift();
+                const idx = currentPlaylist.indexOf(nextTitle);
+                if (idx >= 0) currentSongIndex = idx;
+            } else if (repeatMode === 2) {
+                nextTitle = window.activePlaylist[window.currentSongIndex];
+            } else if (repeatMode === 1) {
+                currentSongIndex = (currentSongIndex + 1) % window.activePlaylist.length;
+                nextTitle = window.activePlaylist[currentSongIndex];
+            } else if (currentSongIndex < window.activePlaylist.length - 1) {
+                currentSongIndex++;
+                nextTitle = window.activePlaylist[currentSongIndex];
             }
-        } else {
-            playPauseIcon.classList.replace('fa-pause', 'fa-play');
-        }
 
-        if (window.currentPlayingTitle) highlightCurrentRow(window.currentPlayingTitle);
-        refreshUpNext();
-    };
+            if (nextTitle) {
+                const mode = window.currentVideoMode || 'mini';
+                playSong(nextTitle, false, false);
+                if (mode === 'mini' && window.innerWidth <= 768) reparentMiniVideo();
+            } else {
+                playPauseIcon.classList.replace('fa-pause', 'fa-play');
+            }
+
+            if (window.currentPlayingTitle) highlightCurrentRow(window.currentPlayingTitle);
+            refreshUpNext();
+        };
+    }
 }
 
-
-}
 
 });
 
