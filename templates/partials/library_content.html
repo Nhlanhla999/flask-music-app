@@ -187,12 +187,14 @@ table {
 
 </style>
 
+</style>
 <main class="main-content">
 
-<div>
-  <button class="playlistbtn" onclick="showPlaylist('mp3')">🎵 MP3 Playlist</button>
-  <button class="playlistbtn" onclick="showPlaylist('mp4')">🎬 MP4 Playlist</button>
-  <button class="playlistbtn" onclick="showPlaylist('liked')">❤️ Liked Songs</button>
+
+<div id="playlistFilterBar">
+  <button class="playlistbtn" data="mp3">🎵 MP3 Playlist</button>
+  <button class="playlistbtn" data="mp4">🎬 MP4 Playlist</button>
+  <button class="playlistbtn" data="liked">❤️ Liked Songs</button>
 </div>
 
 <!-- MP3 Playlist -->
@@ -200,16 +202,14 @@ table {
   <div id="mp3Container" class="preview-box">
     <div id="showMP3Container" class="preview-content">
       <span class="preview-icon">🎵</span>
-     <span class="preview-count">({{ mp3_songs|length }} songs)</span>
-      <button class="shuffle-btn" data-playlist="#mp3Playlist tbody tr">Shuffle and Play</button>
+      <span class="preview-count">({{ mp3_songs|length }} songs)</span>
+      <button class="shuffle-btn" data-playlist="#Mp3body tr">Shuffle and Play</button>
     </div>
   </div>
   <div id="mp3Playlist" class="song-list">
-    <table>
-      <tbody>
-        {% for song in songs if song.title.lower().endswith('.mp3') %}
-        <tr data-file="{{ song.title }}"><td>{{ song.title }}</td></tr>
-        {% endfor %}
+    <table id="mp3Table">
+      <tbody id="Mp3body">
+        <!-- MP3 rows will be inserted here dynamically -->
       </tbody>
     </table>
   </div>
@@ -221,15 +221,13 @@ table {
     <div id="showMP4Container" class="preview-content">
       <span class="preview-icon">🎬</span>
       <span class="preview-count">({{ mp4_songs|length }} songs)</span>
-      <button class="shuffle-btn" data-playlist="#mp4Playlist tbody tr">Shuffle and Play</button>
+      <button class="shuffle-btn" data-playlist="#Mp4body tr">Shuffle and Play</button>
     </div>
   </div>
   <div id="mp4Playlist" class="song-list">
-    <table>
-      <tbody>
-        {% for song in songs if song.title.lower().endswith('.mp4') %}
-        <tr data-file="{{ song.title }}"><td>{{ song.title }}</td></tr>
-        {% endfor %}
+    <table id="mp4Table">
+      <tbody id="Mp4body">
+        <!-- MP4 rows will be inserted here dynamically -->
       </tbody>
     </table>
   </div>
@@ -241,17 +239,17 @@ table {
     <div id="showLikedContainer" class="preview-content">
       <span class="preview-icon">❤️</span>
       <span class="preview-count">({{ liked_songs|length }} songs)</span>
-      <button class="shuffle-btn" data-playlist="#likedPlaylist tbody tr">Shuffle and Play</button>
+      <button class="shuffle-btn" data-playlist="#Likedbody tr">Shuffle and Play</button>
     </div>
   </div>
   <div id="likedPlaylist" class="song-list">
-    <table>
-      <tbody>
-        {% for song in liked_songs %}
-        <tr data-file="{{ song }}"><td>{{ song }}</td></tr>
-        {% endfor %}
+    <table id="likedTable">
+      <tbody id="Likedbody">
+        <!-- Liked rows will be inserted here dynamically -->
       </tbody>
     </table>
   </div>
 </div>
+
+
 </main>
