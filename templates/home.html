@@ -5,7 +5,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='fontawesome-free-7.0.1-web/css/all.min.css') }}">
 
   <title>Music Player</title>
-  <style> 
+  <style>
 
  body {
   background: #000;
@@ -394,13 +394,6 @@ footer .info {
   right: 2rem;
 }
 
-/* Form layout */
-.uploadForm {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
 /* File input label */
 .uploadInput {
   background: #000000ff;
@@ -417,19 +410,9 @@ footer .info {
   display: none;
 }
 
-/* Upload button */
-.uploadBtn {
-  background-color: #000000ff;
-  color: white;
-  border: none;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
 
-.uploadBtn:hover,
+
+
 .uploadInput:hover {
   background: rgba(29,185,84,.15);
 }
@@ -443,13 +426,11 @@ footer .info {
   }
 
   /* Hide text, keep icons */
-  .uploadInput span,
-  .uploadBtn span {
+  .uploadInput span{
     display: none;
   }
 
-  .uploadInput,
-  .uploadBtn {
+  .uploadInput {
     width: 40px;
     height: 40px;
     font-size: 1.2rem;
@@ -1424,8 +1405,6 @@ async function fileToBase64(file) {
         reader.readAsDataURL(file);
     });
 }
-
-
 async function processAndUploadFiles(files) {
   const statusEl = document.getElementById("status");
   if (!files || files.length === 0) return;
@@ -1607,8 +1586,6 @@ function updateUI(title) {
         if (key === 'dislike' && dislikedSongs.has(title)) item.classList.add('active', 'disliked');
     });
 }
-
-
 function addFooterKebab() {
     const footer = document.querySelector("footer");
     if (!footer) return;
@@ -2878,4 +2855,3 @@ async function playSong(title, fromShuffle = false, userClicked = false) {
 
 </body>
 </html>
-
